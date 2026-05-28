@@ -8,7 +8,7 @@ pyyaml==6.0.3
 jsonpath-ng==1.6.1
 importlib_resources==6.4.5
 m3u8==3.6.0
-websockets<13.0
+websockets<17.0
 websockets_proxy==0.1.2
 PyExecJS==1.5.1
 protobuf==5.28.3
