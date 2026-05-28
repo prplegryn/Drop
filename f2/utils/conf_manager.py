@@ -164,7 +164,7 @@ class ConfigManager:
         )
 
         if app_name in default_config:
-            # 将app_name作为外层键 # https://github.com/Johnserf-Seed/TikTokDownload/issues/626  #629
+            # 将 app_name 作为外层键，保持生成配置与默认配置结构一致
             app_config = {app_name: default_config[app_name]}
 
             # 写入应用程序特定配置

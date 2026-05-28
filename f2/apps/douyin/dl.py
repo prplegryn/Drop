@@ -1,9 +1,5 @@
 # path: f2/apps/douyin/dl.py
 
-import asyncio
-
-from rich.live import Live
-from rich.rule import Rule
 from typing import Any, Dict, List, Union
 
 from f2.i18n.translator import _
@@ -79,24 +75,13 @@ class DouyinDownloader(BaseDownloader):
             logger.warning(_("没有找到符合条件的作品，请检查`interval`参数是否正确"))
             return
 
-        # 使用 Rich 的 Live 管理器
-        with Live(
-            console=RichConsoleManager().rich_console,
-            auto_refresh=False,
-            # refresh_per_second=2,
-            vertical_overflow="visible",
-        ) as live:
-            for aweme_data in aweme_datas_list:
-                await self.handler_download(kwargs, aweme_data, user_path)
-                # 手动刷新防止过快闪屏
-                live.refresh()
+        console_manager = RichConsoleManager()
 
-            # 延时更新，避免过快刷新导致界面错乱
-            await asyncio.sleep(0.2)
-            # 动态更新规则输出
-            live.update(Rule(_("当前任务处理完成")))
+        for aweme_data in aweme_datas_list:
+            await self.handler_download(kwargs, aweme_data, user_path)
 
-            await self.execute_tasks()
+        console_manager.rich_console.print(console_manager.rule(_("当前任务处理完成")))
+        await self.execute_tasks()
 
     async def handler_download(
         self, kwargs: Dict, aweme_data_dict: Dict, user_path: Any

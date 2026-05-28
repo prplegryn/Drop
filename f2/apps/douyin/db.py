@@ -138,6 +138,27 @@ class AsyncUserDB(BaseDB):
 class AsyncVideoDB(BaseDB):
     TABLE_NAME = "video_info"
 
+    async def _get_table_columns(self) -> set:
+        cursor = await self.execute(f"PRAGMA table_info({self.TABLE_NAME})")
+        rows = await cursor.fetchall()
+        return {row[1] for row in rows}
+
+    async def _ensure_table_columns(self, fields: list) -> None:
+        existing_columns = await self._get_table_columns()
+
+        for field in fields:
+            column_name = field.split()[0]
+            if column_name not in existing_columns:
+                await self.execute(f"ALTER TABLE {self.TABLE_NAME} ADD COLUMN {field}")
+
+        await self.commit()
+
+    async def _filter_existing_fields(self, data: dict) -> dict:
+        existing_columns = await self._get_table_columns()
+        return {
+            field: value for field, value in data.items() if field in existing_columns
+        }
+
     async def _create_table(self) -> None:
         """
         在数据库中创建视频信息表
@@ -159,6 +180,8 @@ class AsyncVideoDB(BaseDB):
             "can_show_comment TEXT",
             "comment_gid TEXT",
             "create_time TEXT",
+            "caption TEXT",
+            "caption_raw TEXT",
             "desc TEXT",
             "desc_raw TEXT",
             "duration TEXT",
@@ -226,6 +249,7 @@ class AsyncVideoDB(BaseDB):
         await self.execute(
             f"""CREATE TABLE IF NOT EXISTS {self.TABLE_NAME} ({fields_sql})"""
         )
+        await self._ensure_table_columns(fields)
         await self.commit()
 
     async def add_video_info(self, ignore_fields=None, **kwargs) -> None:
@@ -243,6 +267,10 @@ class AsyncVideoDB(BaseDB):
         for field in ignore_fields:
             if field in kwargs:
                 del kwargs[field]
+
+        kwargs = await self._filter_existing_fields(kwargs)
+        if not kwargs:
+            return
 
         keys = ", ".join(kwargs.keys())
         placeholders = ", ".join(["?"] * len(kwargs))
@@ -272,6 +300,14 @@ class AsyncVideoDB(BaseDB):
             for video_data in video_data_list:
                 if field in video_data:
                     del video_data[field]
+
+        video_data_list = [
+            await self._filter_existing_fields(video_data)
+            for video_data in video_data_list
+        ]
+        video_data_list = [video_data for video_data in video_data_list if video_data]
+        if not video_data_list:
+            return
 
         keys = ", ".join(video_data_list[0].keys())
         placeholders = ", ".join(["?" for _ in range(len(video_data_list[0]))])

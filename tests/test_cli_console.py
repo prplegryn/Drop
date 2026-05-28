@@ -55,3 +55,15 @@ async def test_custom_progress():
     custom_spinner_column = CustomSpinnerColumn(spinner_styles=my_spinners)
     progress_manager_custom = ProgressManager(spinner_column=custom_spinner_column)
     await simulate_progress(progress_manager_custom)
+
+
+def test_progress_manager_allows_nested_contexts():
+    progress_manager = ProgressManager()
+
+    with progress_manager:
+        with progress_manager:
+            assert progress_manager._start_count == 2
+
+        assert progress_manager._start_count == 1
+
+    assert progress_manager._start_count == 0

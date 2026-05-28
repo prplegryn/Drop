@@ -1,24 +1,158 @@
 # path: f2/cli/cli_console.py
 
+import datetime
+
 from asyncio import Lock
 from typing import Optional, Dict
 from rich.prompt import Prompt
+from rich.text import Text
+from rich.theme import Theme
 from rich.console import Console
 from rich.spinner import Spinner
 from rich.progress import (
     Progress as RichProgress,
     TaskID,
     Task,
-    BarColumn,
-    TextColumn,
-    TimeRemainingColumn,
-    DownloadColumn,
-    TransferSpeedColumn,
     ProgressColumn,
-    # TimeElapsedColumn,
 )
 
 from f2.utils._singleton import Singleton
+
+
+CLI_THEME = Theme(
+    {
+        "f2.accent": "bright_cyan",
+        "f2.dim": "grey50",
+        "f2.file": "white",
+        "f2.ok": "green",
+        "f2.warn": "yellow",
+        "f2.error": "red",
+        "f2.rule": "grey35",
+        "f2.status.wait": "grey50",
+        "f2.status.run": "bright_cyan",
+        "f2.status.ok": "green",
+        "f2.status.warn": "yellow",
+        "f2.status.error": "red",
+        "bar.back": "grey23",
+        "bar.complete": "bright_cyan",
+        "bar.finished": "green",
+        "bar.pulse": "cyan",
+        "progress.percentage": "bright_cyan",
+        "progress.spinner": "bright_cyan",
+        "logging.level.debug": "grey50",
+        "logging.level.info": "bright_cyan",
+        "logging.level.warning": "yellow",
+        "logging.level.error": "red",
+        "logging.level.critical": "bold red",
+    }
+)
+
+LABEL_WIDTH = 14
+TRANSFER_BAR_WIDTH = 30
+CURSOR = "█"
+
+
+STATUS_LABELS = {
+    "waiting": "WAIT",
+    "starting": "INIT",
+    "downloading": "GET",
+    "paused": "HOLD",
+    "warning": "WARN",
+    "error": "FAIL",
+    "missing": "MISS",
+    "skipped": "SKIP",
+    "completed": "DONE",
+}
+
+
+def status_label(state: str) -> str:
+    return STATUS_LABELS.get(state, STATUS_LABELS["starting"])
+
+
+def timestamp() -> str:
+    return datetime.datetime.now().strftime("[%H:%M:%S]")
+
+
+def dashboard_header(title: str, cursor: bool = False) -> Text:
+    line = Text(f"{timestamp()} {title}")
+    if cursor:
+        line.append(f" {CURSOR}", style="bold blink")
+    return line
+
+
+def dashboard_line(label: str, value: str = "", cursor: bool = False) -> Text:
+    line = Text(f"{timestamp()} {label:<{LABEL_WIDTH}}: {value}")
+    if cursor:
+        line.append(f" {CURSOR}", style="bold blink")
+    return line
+
+
+def format_duration(seconds: Optional[float]) -> str:
+    if seconds is None or seconds == float("inf"):
+        return "--:--"
+
+    seconds = max(0, int(seconds))
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def format_speed(bytes_per_second: Optional[float]) -> str:
+    if not bytes_per_second:
+        return "-- MB/s"
+
+    units = ("B/s", "KB/s", "MB/s", "GB/s")
+    speed = float(bytes_per_second)
+    unit = units[0]
+    for unit in units:
+        if speed < 1024 or unit == units[-1]:
+            break
+        speed /= 1024
+
+    if unit == "B/s":
+        return f"{speed:.0f} {unit}"
+
+    return f"{speed:.1f} {unit}"
+
+
+class DashboardTimeColumn(ProgressColumn):
+    def render(self, task: Task):
+        return Text(timestamp(), style="f2.dim")
+
+
+class DashboardTransferColumn(ProgressColumn):
+    def render(self, task: Task):
+        percentage = task.percentage if task.percentage is not None else 0
+        percentage = max(0, min(100, percentage))
+        filled = int(TRANSFER_BAR_WIDTH * percentage / 100)
+        bar = CURSOR * filled + " " * (TRANSFER_BAR_WIDTH - filled)
+        return Text(f"Transfer      : {bar} {percentage:>3.0f}%")
+
+
+class DashboardSpeedColumn(ProgressColumn):
+    def render(self, task: Task):
+        return Text(f"Speed         : {format_speed(task.speed)}")
+
+
+class DashboardETAColumn(ProgressColumn):
+    def render(self, task: Task):
+        return Text(f"ETA           : {format_duration(task.time_remaining)}")
+
+
+class DashboardCursorColumn(ProgressColumn):
+    def render(self, task: Task):
+        return Text(CURSOR, style="bold blink")
+
+
+class TaskStatusColumn(ProgressColumn):
+    """Render a compact task state label."""
+
+    def render(self, task: Task):
+        state = task.fields.get("state", "starting")
+        return Text(status_label(state).rjust(4), style="f2.dim")
 
 
 class CustomSpinnerColumn(ProgressColumn):
@@ -55,12 +189,15 @@ class CustomSpinnerColumn(ProgressColumn):
     """
 
     DEFAULT_SPINNERS = {
-        "waiting": "dots8",
-        "starting": "arrow",
-        "downloading": "moon",
-        "paused": "smiley",
-        "error": "star2",
-        "completed": "hearts",
+        "waiting": "simpleDots",
+        "starting": "point",
+        "downloading": "line",
+        "paused": "dots8",
+        "warning": "bouncingBar",
+        "error": "simpleDotsScrolling",
+        "missing": "simpleDotsScrolling",
+        "skipped": "simpleDots",
+        "completed": "point",
     }
 
     def __init__(
@@ -125,19 +262,15 @@ class ProgressManager:
     ```
     """
 
-    DEFAULT_COLUMNS = {
-        "spinner": CustomSpinnerColumn(),
-        "description": TextColumn(
-            "{task.description}[bold blue]{task.fields[filename]}"
-        ),
-        "bar": BarColumn(bar_width=None),
-        "percentage": TextColumn("[progress.percentage]{task.percentage:>4.2f}%"),
-        "•": "•",
-        "filesize": DownloadColumn(),
-        "speed": TransferSpeedColumn(),
-        "ETA": "[bold blue]ETA",
-        "remaining": TimeRemainingColumn(),
-    }
+    @staticmethod
+    def _default_columns() -> Dict[str, ProgressColumn]:
+        return {
+            "time": DashboardTimeColumn(),
+            "transfer": DashboardTransferColumn(),
+            "speed": DashboardSpeedColumn(),
+            "eta": DashboardETAColumn(),
+            "cursor": DashboardCursorColumn(),
+        }
 
     def __init__(
         self,
@@ -145,29 +278,42 @@ class ProgressManager:
         custom_columns: Optional[Dict[str, ProgressColumn]] = None,
         bar_width: Optional[int] = None,
         expand: bool = False,
+        console: Optional[Console] = None,
     ):
-        chosen_columns_dict = custom_columns or self.DEFAULT_COLUMNS.copy()
-        if spinner_column:
-            chosen_columns_dict = {"spinner": spinner_column, **chosen_columns_dict}
-        if "bar" in chosen_columns_dict and isinstance(
-            chosen_columns_dict["bar"], BarColumn
-        ):
-            bar_column = chosen_columns_dict["bar"]
-            bar_column.bar_width = bar_width or 40
+        chosen_columns_dict = custom_columns or self._default_columns()
+        if spinner_column and custom_columns:
+            chosen_columns_dict["spinner"] = spinner_column
+        self._console = console
         self._progress = RichProgress(
-            *chosen_columns_dict.values(), transient=False, expand=expand
+            *chosen_columns_dict.values(),
+            console=console,
+            refresh_per_second=8,
+            transient=False,
+            expand=expand,
         )
         self._progress_lock = Lock()
         self._active_tasks = set()
+        self._start_count = 0
+        self._visible_task_id = None
+        self._had_tasks = False
 
     def start(self):
-        self._progress.start()
+        if self._start_count == 0:
+            self._progress.start()
+        self._start_count += 1
 
     def start_task(self, task_id):
         self._progress.start_task(task_id)
 
     def stop(self):
-        self._progress.stop()
+        if self._start_count == 0:
+            return
+
+        self._start_count -= 1
+        if self._start_count == 0:
+            self._progress.stop()
+            if self._console and self._had_tasks:
+                self._console.print(dashboard_line("STATUS", "下载完成", cursor=True))
 
     def stop_task(self, task_id):
         self._progress.stop_task(task_id)
@@ -187,6 +333,11 @@ class ProgressManager:
         filename: str = "",
     ) -> TaskID:
         async with self._progress_lock:
+            self._had_tasks = True
+            if visible:
+                for task in self._progress.tasks:
+                    self._progress.update(task.id, visible=False)
+
             task_id = self._progress.add_task(
                 description=description,
                 start=start,
@@ -196,6 +347,8 @@ class ProgressManager:
                 filename=filename,
                 state=state,
             )
+            if visible:
+                self._visible_task_id = task_id
             self._active_tasks.add(task_id)
         return task_id
 
@@ -212,6 +365,18 @@ class ProgressManager:
         state: Optional[str] = None,
     ) -> None:
         async with self._progress_lock:
+            next_state = state or self._progress.tasks[task_id].fields.get("state")
+            if visible and next_state not in {
+                "completed",
+                "skipped",
+                "missing",
+                "error",
+            }:
+                for task in self._progress.tasks:
+                    if task.id != task_id:
+                        self._progress.update(task.id, visible=False)
+                self._visible_task_id = task_id
+
             update_params = {
                 key: value
                 for key, value in [
@@ -220,7 +385,7 @@ class ProgressManager:
                     ("state", state),
                     ("filename", filename),
                 ]
-                if value
+                if value is not None
             }
 
             self._progress.update(
@@ -231,6 +396,12 @@ class ProgressManager:
                 refresh=refresh,
                 **update_params,
             )
+
+            if task_id == self._visible_task_id and (
+                not visible
+                or next_state in {"completed", "skipped", "missing", "error"}
+            ):
+                self._visible_task_id = None
 
             if self._progress.tasks[task_id].finished and task_id in self._active_tasks:
                 self._active_tasks.remove(task_id)
@@ -280,7 +451,19 @@ class RichConsoleManager(metaclass=Singleton):
     """
 
     def __init__(self):
-        self._progress_manager = ProgressManager()
+        self._console = Console(
+            color_system="truecolor",
+            theme=CLI_THEME,
+            highlight=False,
+        )
+        self._exception_console = Console(
+            color_system="truecolor",
+            theme=CLI_THEME,
+            stderr=True,
+            highlight=False,
+        )
+        self._prompt = Prompt()
+        self._progress_manager = ProgressManager(console=self._console)
 
     @property
     def progress(self) -> ProgressManager:
@@ -288,12 +471,21 @@ class RichConsoleManager(metaclass=Singleton):
 
     @property
     def exception_console(self) -> Console:
-        return Console()
+        return self._exception_console
 
     @property
     def rich_console(self) -> Console:
-        return Console()
+        return self._console
 
     @property
     def rich_prompt(self) -> Prompt:
-        return Prompt()
+        return self._prompt
+
+    def line(self, label: str, value: str = "", cursor: bool = False) -> Text:
+        return dashboard_line(label, value, cursor)
+
+    def header(self, title: str, cursor: bool = False) -> Text:
+        return dashboard_header(title, cursor)
+
+    def rule(self, title: str) -> Text:
+        return dashboard_header(title)

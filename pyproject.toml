@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "f2"
 dynamic = ["version"]
-description = "🚀Asynchronous based full-platform download tool"
+description = "🚀Asynchronous based DouYin download tool"
 readme = "README.md"
 license = "Apache-2.0"
 repository = "https://github.com/Johnserf-Seed/f2"
@@ -49,14 +49,7 @@ keywords = [
     "https",
     "ws",
     "wss",
-    "bark",
-    "tiktok",
     "douyin",
-    "twitter",
-    "x",
-    "weibo",
-    "bilibili",
-    "netease",
     "http proxy",
     "watermark",
 ]

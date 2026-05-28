@@ -12,7 +12,7 @@ from typing import Union, Optional, Any, List, Set
 
 from f2.log.logger import logger, trace_logger
 from f2.i18n.translator import _
-from f2.cli.cli_console import RichConsoleManager
+from f2.cli.cli_console import RichConsoleManager, status_label
 from f2.crawlers.base_crawler import BaseCrawler
 from f2.utils._signal import SignalManager
 from f2.utils.utils import ensure_path
@@ -105,6 +105,7 @@ class BaseDownloader(BaseCrawler):
 
         try:
             response = await self.aclient.send(request, stream=True)
+            await self.progress.update(task_id, state="downloading")
             async for chunk in response.aiter_bytes(get_chunk_size(content_length)):
                 if SignalManager.is_shutdown_signaled():
                     break
@@ -239,7 +240,7 @@ class BaseDownloader(BaseCrawler):
                         )
                         await self.progress.update(
                             task_id,
-                            description=_("[yellow][  警告  ]：[/yellow]"),
+                            description=status_label("warning"),
                             filename=trim_filename(full_path.name, 45),
                             state="warning",
                         )
@@ -257,18 +258,20 @@ class BaseDownloader(BaseCrawler):
                         tmp_path.unlink(missing_ok=True)
                         await self.progress.update(
                             task_id,
-                            description=_("[red][  失败  ]：[/red]"),
+                            description=status_label("error"),
                             filename=trim_filename(full_path.name, 45),
                             state="error",
                         )
                         continue
 
                     logger.info(
-                        _("[green][  完成  ]：{0}[/green]").format(Path(full_path).name)
+                        _("{0} {1}").format(
+                            status_label("completed"), Path(full_path).name
+                        )
                     )
                     await self.progress.update(
                         task_id,
-                        description=_("[green][  完成  ]：[/green]"),
+                        description=status_label("completed"),
                         filename=trim_filename(full_path.name, 45),
                         state="completed",
                         visible=False,
@@ -283,15 +286,15 @@ class BaseDownloader(BaseCrawler):
                 # 如果遍历完所有链接仍然无法成功下载，则记录警告
                 logger.warning(_("所有链接都无法下载"))
                 logger.error(
-                    _("[red][  丢失  ]：[/red]无法下载文件，路径：{0}").format(
-                        Path(full_path).name
+                    _("{0} 无法下载文件，路径：{1}").format(
+                        status_label("missing"), Path(full_path).name
                     )
                 )
                 await self.progress.update(
                     task_id,
-                    description=_("[red][  丢失  ]：[/red]"),
+                    description=status_label("missing"),
                     filename=trim_filename(full_path.name, 45),
-                    state="error",
+                    state="missing",
                     visible=False,
                 )
 
@@ -323,16 +326,21 @@ class BaseDownloader(BaseCrawler):
 
         # 更新进度条 (Update progress bar)
         await self.progress.update(
-            task_id, advance=1024, total=int(sys.getsizeof(content))
+            task_id,
+            advance=1024,
+            total=int(sys.getsizeof(content)),
+            state="downloading",
         )
         # 创建异步文件对象并写入内容 (Create an async file object and write content)
         async with aiofiles.open(**open_params) as f:
             await f.write(content)
 
-        logger.info(_("[green][  完成  ]：{0}[/green]").format(Path(full_path).name))
+        logger.info(
+            _("{0} {1}").format(status_label("completed"), Path(full_path).name)
+        )
         await self.progress.update(
             task_id,
-            description=_("[green][  完成  ]：[/green]"),
+            description=status_label("completed"),
             filename=trim_filename(full_path.name, 45),
             state="completed",
             visible=False,
@@ -364,6 +372,7 @@ class BaseDownloader(BaseCrawler):
         """
         async with self.semaphore:
             full_path = self._ensure_path(full_path)
+            await self.progress.update(task_id, state="downloading")
             # 设置默认下载总量 (Set default total download)
             total_downloaded = 10240000
             # 默认块大小 (Default chunk size)
@@ -379,13 +388,13 @@ class BaseDownloader(BaseCrawler):
                     if not segments:
                         logger.debug(_("m3u8片段为空，直播流已结束"))
                         logger.info(
-                            _("[green][  完成  ]：{0}[/green]").format(
-                                Path(full_path).name
+                            _("{0} {1}").format(
+                                status_label("completed"), Path(full_path).name
                             )
                         )
                         await self.progress.update(
                             task_id,
-                            description=_("[green][  完成  ]：[/green]"),
+                            description=status_label("completed"),
                             filename=trim_filename(full_path.name, 45),
                             state="completed",
                             visible=False,
@@ -484,11 +493,13 @@ class BaseDownloader(BaseCrawler):
                         logger.error(_("[red]m3u8文件下载失败，但文件已保存[/red]"))
 
                     logger.info(
-                        _("[green][  完成  ]：{0}[/green]").format(Path(full_path).name)
+                        _("{0} {1}").format(
+                            status_label("completed"), Path(full_path).name
+                        )
                     )
                     await self.progress.update(
                         task_id,
-                        description=_("[red][  完成  ]：[/red]"),
+                        description=status_label("completed"),
                         filename=trim_filename(full_path.name, 45),
                         state="completed",
                         visible=False,
@@ -501,9 +512,9 @@ class BaseDownloader(BaseCrawler):
                     logger.error(_("m3u8文件解析失败：{0}").format(e))
                     await self.progress.update(
                         task_id,
-                        description=_("[red][  失败  ]：[/red]"),
+                        description=status_label("error"),
                         filename=trim_filename(full_path.name, 45),
-                        state="completed",
+                        state="error",
                     )
                     return
 
@@ -539,18 +550,25 @@ class BaseDownloader(BaseCrawler):
         full_path = self._ensure_path(base_path) / file_path
 
         if full_path.exists():
-            logger.info(_("[cyan][  跳过  ]: {0}[/cyan]").format(Path(full_path).name))
+            logger.info(
+                _("{0} {1}").format(status_label("skipped"), Path(full_path).name)
+            )
             task_id = await self.progress.add_task(
-                description=_("[cyan][  跳过  ]:[/cyan]"),
+                description=status_label("skipped"),
                 filename=trim_filename(file_path, 45),
                 start=True,
                 total=1,
                 completed=1,
             )
-            await self.progress.update(task_id, state="completed", visible=False)
+            await self.progress.update(task_id, state="skipped", visible=False)
         else:
+            logger.info(
+                _("{0} {1} -> {2}").format(
+                    status_label("starting"), file_type, Path(full_path).name
+                )
+            )
             task_id = await self.progress.add_task(
-                description=_("[  {0}  ]:").format(file_type),
+                description=f"[f2.dim]{file_type}[/]",
                 filename=trim_filename(file_path, 45),
                 start=True,
             )
@@ -587,18 +605,25 @@ class BaseDownloader(BaseCrawler):
         full_path = self._ensure_path(base_path) / file_path
 
         if full_path.exists():
-            logger.info(_("[cyan][  跳过  ]: {0}[/cyan]").format(Path(full_path).name))
+            logger.info(
+                _("{0} {1}").format(status_label("skipped"), Path(full_path).name)
+            )
             task_id = await self.progress.add_task(
-                description=_("[cyan][  跳过  ]:[/cyan]"),
+                description=status_label("skipped"),
                 filename=trim_filename(file_path, 45),
                 start=True,
                 total=1,
                 completed=1,
             )
-            await self.progress.update(task_id, state="completed", visible=False)
+            await self.progress.update(task_id, state="skipped", visible=False)
         else:
+            logger.info(
+                _("{0} {1} -> {2}").format(
+                    status_label("starting"), file_type, Path(full_path).name
+                )
+            )
             task_id = await self.progress.add_task(
-                description=_("[  {0}  ]:").format(file_type),
+                description=f"[f2.dim]{file_type}[/]",
                 filename=trim_filename(file_path, 45),
                 start=True,
             )
@@ -634,18 +659,25 @@ class BaseDownloader(BaseCrawler):
         full_path = self._ensure_path(base_path) / file_path
 
         if full_path.exists():
-            logger.info(_("[cyan][  跳过  ]: {0}[/cyan]").format(Path(full_path).name))
+            logger.info(
+                _("{0} {1}").format(status_label("skipped"), Path(full_path).name)
+            )
             task_id = await self.progress.add_task(
-                description=_("[cyan][  跳过  ]:[/cyan]"),
+                description=status_label("skipped"),
                 filename=trim_filename(file_path, 45),
                 start=True,
                 total=1,
                 completed=1,
             )
-            await self.progress.update(task_id, state="completed", visible=False)
+            await self.progress.update(task_id, state="skipped", visible=False)
         else:
+            logger.info(
+                _("{0} {1} -> {2}").format(
+                    status_label("starting"), file_type, Path(full_path).name
+                )
+            )
             task_id = await self.progress.add_task(
-                description=_("[  {0}  ]:").format(file_type),
+                description=f"[f2.dim]{file_type}[/]",
                 filename=trim_filename(file_path, 45),
                 start=True,
             )
@@ -659,6 +691,14 @@ class BaseDownloader(BaseCrawler):
         """执行所有下载任务 (Execute all download tasks)"""
         logger.debug(
             _("开始执行下载任务，本次共有 {0} 个任务").format(len(self.download_tasks))
+        )
+        if not self.download_tasks:
+            logger.info(_("{0} 无待执行下载任务").format(status_label("completed")))
+            return
+        logger.info(
+            _("{0} 开始执行 {1} 个下载任务").format(
+                status_label("downloading"), len(self.download_tasks)
+            )
         )
         await asyncio.gather(*self.download_tasks)
         self.download_tasks.clear()

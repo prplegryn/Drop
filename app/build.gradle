@@ -1,0 +1,94 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.plugin.compose"
+    id "com.chaquo.python"
+}
+
+android {
+    namespace "com.drop.f2"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.drop.f2"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    buildFeatures {
+        compose true
+    }
+}
+
+def dropPythonDir = layout.buildDirectory.dir("generated/dropPython")
+def syncDropPython = tasks.register("syncDropPython", Sync) {
+    into dropPythonDir
+    from(rootProject.file("drop_android_runner.py"))
+    from(rootProject.file("f2")) {
+        into "f2"
+        exclude "**/__pycache__/**", "**/*.pyc", "**/*.pyo", "**/test/**", "**/tests/**", "conf/test.yaml"
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn syncDropPython
+}
+
+tasks.configureEach { task ->
+    if (task.name != "syncDropPython" && task.name.toLowerCase().contains("python")) {
+        task.dependsOn syncDropPython
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip {
+            install "-r", "requirements-android.txt"
+        }
+        extractPackages "f2"
+    }
+
+    sourceSets {
+        getByName("main") {
+            srcDirs = [file("src/main/python"), dropPythonDir.get().asFile]
+        }
+    }
+}
+
+dependencies {
+    implementation platform("androidx.compose:compose-bom:2026.05.01")
+    implementation "androidx.activity:activity-compose:1.12.4"
+    implementation "androidx.annotation:annotation:1.9.1"
+    implementation "androidx.compose.animation:animation"
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.compose.material3:material3"
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+
+    debugImplementation "androidx.compose.ui:ui-tooling"
+}

@@ -7,33 +7,3 @@ douyin:
     http://:
     https://:
 
-tiktok:
-  headers:
-    User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0
-    Referer: https://www.tiktok.com/
-  cookie: tt_csrf_token=5ssSeTwE-r8PiNHI9Md6Qvu_I8115GoJngI8; tt_chain_token=qfnQXoEyVEBxRHTOu+8Taw==; ak_bmsc=E5A701A4B5F4973342B3F3762D2294C0~000000000000000000000000000000~YAAQB/N0aOGtlLeUAQAA+xi4vBpJgsYbU78aM7gEvnq3G2PaOXL/n1s5DeT2ECnxHMTkityswrCdcm51qPULcdnSpx49f+GkmNOIsiRrz2MPyRXkfraW6XmwbR1Bl9/NLzt8IFSFHaC9XfJxmF/Ijb0WkJ7TIb9Vq8JGvyoa4s7syjA1onyMlB7OG4fvMdZHcsNAi4NtIIvNL5BWz1pYGrnoAojINXgg0RKK80kgqDPjHdi6wtuIn6B9sAXCNHT9OsNGQY3U6NiQTEMlHXTvLsT6M7umfvi14lztpyZGZTfxvQ1Hzl1KrNWbkyla7T/xamnYlEAnVdVtb0sDCK4EMVMLcNSloPS/YwQ2zbf4Wm6i/IxIfrtO+JL+OIAAB0st8FYDMbN+qJPKAg==; ttwid=1%7CCSfrRg2TGT8XHHHbGLCjsCHYFfcbiwofoSAxLBEd5Cc%7C1738332971%7C0d62ad8776ed819bc48bd04c38c8ed71557b0f69bee77e024ca5eea43f2ea7e8; csrf_session_id=f4db6433b3183ae9c05b7ad519d1cbb5; _ga=GA1.1.2033081070.1738332977; _ga_LWWPCY99PB=GS1.1.1738332977.1.0.1738332977.0.0.183547556; FPID=FPID2.2.G7o2i2GkONofaMB62j2AkDyq5%2FmN5vf%2FIjBAyo2cB%2FQ%3D.1738332977; FPLC=C7JwK48l7%2BITo4oHRhVjfDGTgzkYsGgRIt5c1EqUDbsxIn4jXgCLmYHL28lUbFObs94ps8J%2Fn8zmUn8lRvaNalNIWukN0jZjBA9bpPeg%2B63ww5kMUnfhaCAETzFi3g%3D%3D; FPAU=1.2.1794787286.1738332978; _fbp=fb.1.1738332977959.1313654638; msToken=VqL2gan0rwT_WiyShkPROZr0ffMghxFYV9IO7J-EtNWXXfYwRB7ebuYME28WO8M-a5u-t8MWe2NU2yoZPJtdXi8HjbwbSTSJAa60YfVQZ0LvusS9AjSSDtIA0ut5cLgaEjMGvGMUWBARc5EWd2S6nw==
-  proxies:
-    http://:
-    https://:
-
-weibo:
-  headers:
-    User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0
-    Referer: https://www.weibo.com/
-  cookie: XSRF-TOKEN=O9R5qESZXSgDGogRn0tIaR06; SUB=_2AkMQwFSkf8NxqwFRmf8QyWnrbox1wgrEieKmnKV_JRMxHRl-yT9yql0CtRB6O0B6SwPP5M-Cgk1eejkKAPjblCC0RnPY; SUBP=0033WrSXqPxfM72-Ws9jqgMF55529P9D9W5X471i1s6nd1o5nmDVgAHn; WBPSESS=wmtK4rVYDqg_ZQgKuCoP3nlHEfq8LpfwWbiYteqTtPDS2-uyKFI7cKKt8v09BQkNC17Ztk9lA40DeHDeSLOghJTpIQr-XfJaj6N5bgvT-LxXfDOBCZEpRFDMGBdRLvQ_WDNo1haM1L6eeZwc6lAcDFv93snGOAqFbHlgMDSpsn0=
-  proxies:
-    http://:
-    https://:
-
-twitter:
-  headers:
-    User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0
-    Referer: https://twitter.com/
-  cookie: guest_id=173833303486533045; night_mode=2; guest_id_marketing=v1%3A173833303486533045; guest_id_ads=v1%3A173833303486533045; gt=1885331514923376777; personalization_id="v1_02G1YbVgfCR5kbYEr54zXg=="
-  proxies:
-    http://:
-    https://:
-
-bark:
-  key: ""
-  token: ""

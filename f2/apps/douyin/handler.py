@@ -2,7 +2,6 @@
 
 import asyncio
 
-from rich.rule import Rule
 from pathlib import Path
 from urllib.parse import quote
 from typing import AsyncGenerator, Union, Dict, Any, List
@@ -10,8 +9,6 @@ from typing import AsyncGenerator, Union, Dict, Any, List
 from f2.log.logger import logger
 from f2.i18n.translator import _
 from f2.utils.decorators import mode_handler, mode_function_map
-from f2.apps.bark.handler import BarkHandler
-from f2.apps.bark.utils import ClientConfManager as BarkClientConfManager
 from f2.apps.douyin.db import AsyncUserDB, AsyncVideoDB
 from f2.apps.douyin.crawler import DouyinCrawler, DouyinWebSocketCrawler
 from f2.apps.douyin.dl import DouyinDownloader
@@ -79,11 +76,12 @@ from f2.apps.douyin.utils import (
 from f2.cli.cli_console import RichConsoleManager
 from f2.exceptions.api_exceptions import APIResponseError
 
-# from f2.utils.utils import split_set_cookie
-from f2.utils.utils import interval_2_timestamp, timestamp_2_str, get_timestamp
+from f2.utils.utils import interval_2_timestamp, timestamp_2_str
 
-rich_console = RichConsoleManager().rich_console
-rich_prompt = RichConsoleManager().rich_prompt
+rich_console_manager = RichConsoleManager()
+rich_console = rich_console_manager.rich_console
+rich_prompt = rich_console_manager.rich_prompt
+Rule = rich_console_manager.rule
 
 
 DY_LIVE_STATUS_MAPPING = {
@@ -108,37 +106,6 @@ class DouyinHandler:
     def __init__(self, kwargs: dict = None) -> None:
         self.kwargs = kwargs
         self.downloader = DouyinDownloader(self.kwargs)
-        # 初始化 Bark 通知服务
-        self.bark_kwargs = BarkClientConfManager.merge()
-        self.enable_bark = BarkClientConfManager.enable_bark()
-        self.bark_notification = BarkHandler(self.bark_kwargs)
-
-    async def _send_bark_notification(
-        self,
-        title: str,
-        body: str,
-        send_method: str = "post",
-        **kwargs,
-    ) -> None:
-        """
-        发送Bark通知的辅助方法。负责自定义通知内容。
-
-        Args:
-            title (str): 通知标题
-            body (str): 通知内容
-            send_method (str): 调用的发送方法（"fetch" 或 "post"）
-            kwargs (dict): 其他通知参数
-        Returns:
-            None
-        """
-
-        if self.enable_bark:
-            await self.bark_notification.send_quick_notification(
-                title,
-                body,
-                send_method=send_method,
-                **kwargs,
-            )
 
     async def fetch_user_profile(
         self,
@@ -303,28 +270,6 @@ class DouyinHandler:
             )
         )
 
-        await self._send_bark_notification(
-            _("[DouYin] 单个作品下载"),
-            _(
-                "作品ID：{0}\n"
-                "类型：{1}\n"
-                "文案：{2}\n"
-                "作者：{3}\n"
-                "下载时间：{4}"
-            ).format(
-                video.aweme_id,
-                video.aweme_type,
-                (
-                    video.desc_raw[:20] + "..."
-                    if len(video.desc_raw) > 20
-                    else video.desc_raw
-                ),
-                video.nickname_raw,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
         return video
 
     @mode_handler("post")
@@ -453,16 +398,6 @@ class DouyinHandler:
             _("结束处理用户发布的作品，共处理 {0} 个作品").format(videos_collected)
         )
 
-        await self._send_bark_notification(
-            _("[DouYin] 主页作品下载"),
-            _("用户：{0}\n" "作品数：{1}\n" "下载时间：{2}").format(
-                nickname_raw,
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     @mode_handler("like")
     async def handle_user_like(self):
         """
@@ -578,15 +513,6 @@ class DouyinHandler:
 
         # 点赞接口中没有当前用户的相关信息，因此无法获取nickname_raw
         user = await self.fetch_user_profile(sec_user_id)
-        await self._send_bark_notification(
-            _("[DouYin] 点赞作品下载"),
-            _("用户：{0}\n" "作品数：{1}\n" "下载时间：{2}").format(
-                user.nickname_raw,
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
 
     @mode_handler("music")
     async def handle_user_music_collection(self):
@@ -686,15 +612,6 @@ class DouyinHandler:
 
         logger.info(
             _("结束处理用户收藏音乐作品，共处理 {0} 个作品").format(music_collected)
-        )
-
-        await self._send_bark_notification(
-            _("[DouYin] 音乐收藏下载"),
-            _("音乐数：{0}\n" "下载时间：{1}").format(
-                music_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
         )
 
     @mode_handler("collection")
@@ -798,15 +715,6 @@ class DouyinHandler:
 
         logger.info(
             _("结束处理用户收藏作品，共处理 {0} 个作品").format(videos_collected)
-        )
-
-        await self._send_bark_notification(
-            _("[DouYin] 收藏作品下载"),
-            _("作品数：{0}\n" "下载时间：{1}").format(
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
         )
 
     @mode_handler("collects")
@@ -1066,16 +974,6 @@ class DouyinHandler:
             )
         )
 
-        await self._send_bark_notification(
-            _("[DouYin] 收藏夹作品下载"),
-            _("收藏夹ID：{0}\n" "作品数：{1}\n" "下载时间：{2}").format(
-                collects_id,
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     @mode_handler("mix")
     async def handle_user_mix(self):
         """
@@ -1192,16 +1090,6 @@ class DouyinHandler:
             _("结束处理用户合集作品，共处理 {0} 个作品").format(videos_collected)
         )
 
-        await self._send_bark_notification(
-            _("[DouYin] 合集作品下载"),
-            _("合集ID：{0}\n" "作品数：{1}\n" "下载时间：{2}").format(
-                mix_id,
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     @mode_handler("live")
     async def handle_user_live(self):
         """
@@ -1285,30 +1173,6 @@ class DouyinHandler:
         )
         logger.debug(_("结束直播信息处理"))
 
-        await self._send_bark_notification(
-            _("[DouYin] 直播下载"),
-            _(
-                "房间ID：{0}\n"
-                "用户：{1}\n"
-                "直播间：{2}\n"
-                "状态：{3}\n"
-                "观看人数：{4}\n"
-                "下载时间：{5}"
-            ).format(
-                live.room_id,
-                live.nickname_raw or "",
-                (
-                    live.live_title_raw[:20] + "..."
-                    if len(live.live_title_raw) > 20
-                    else live.live_title_raw
-                ),
-                DY_LIVE_STATUS_MAPPING.get(live.live_status, _("未知状态")),
-                live.user_count or 0,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
         return live
 
     async def fetch_user_live_videos_by_room_id(
@@ -1357,30 +1221,6 @@ class DouyinHandler:
             )
         )
         logger.info(_("结束直播数据处理"))
-
-        await self._send_bark_notification(
-            _("[DouYin] 直播下载-2"),
-            _(
-                "直播ID：{0}\n"
-                "用户：{1}\n"
-                "直播间：{2}\n"
-                "状态：{3}\n"
-                "观看人数：{4}\n"
-                "下载时间：{5}"
-            ).format(
-                live.web_rid,
-                live.nickname_raw or "",
-                (
-                    live.live_title_raw[:20] + "..."
-                    if len(live.live_title_raw) > 20
-                    else live.live_title_raw
-                ),
-                DY_LIVE_STATUS_MAPPING.get(live.live_status, _("未知状态")),
-                live.user_count or 0,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
 
         return live
 
@@ -1489,15 +1329,6 @@ class DouyinHandler:
             _("结束处理用户首页推荐作品，共处理 {0} 个作品").format(videos_collected)
         )
 
-        await self._send_bark_notification(
-            _("[DouYin] 推荐作品下载"),
-            _("作品数：{0}\n" "下载时间：{1}").format(
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     @mode_handler("related")
     async def handle_related(self):
         """
@@ -1601,15 +1432,6 @@ class DouyinHandler:
 
         logger.info(
             _("结束处理作品相似推荐，共处理 {0} 个作品").format(videos_collected)
-        )
-
-        await self._send_bark_notification(
-            _("[DouYin] 相似推荐作品下载"),
-            _("作品数：{0}\n" "下载时间：{1}").format(
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
         )
 
     @mode_handler("friend")
@@ -1717,15 +1539,6 @@ class DouyinHandler:
 
         logger.info(_("结束处理好友作品，共处理 {0} 个作品").format(videos_collected))
 
-        await self._send_bark_notification(
-            _("[DouYin] 好友作品下载"),
-            _("作品数：{0}\n" "下载时间：{1}").format(
-                videos_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     async def fetch_user_following(
         self,
         user_id: str = "",
@@ -1821,15 +1634,6 @@ class DouyinHandler:
 
         logger.info(_("结束处理关注用户，共处理 {0} 个用户").format(users_collected))
 
-        await self._send_bark_notification(
-            _("[DouYin] 关注用户采集"),
-            _("关注数：{0}\n" "下载时间：{1}").format(
-                users_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     async def fetch_user_follower(
         self,
         user_id: str = "",
@@ -1913,15 +1717,6 @@ class DouyinHandler:
             await asyncio.sleep(self.kwargs.get("timeout", 5))
 
         logger.info(_("结束处理粉丝用户，共处理 {0} 个用户").format(users_collected))
-
-        await self._send_bark_notification(
-            _("[DouYin] 粉丝用户采集"),
-            _("粉丝数：{0}\n" "下载时间：{1}").format(
-                users_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
 
     async def fetch_query_user(self) -> QueryUserFilter:
         """
@@ -2126,22 +1921,6 @@ class DouyinHandler:
             )
             logger.info(_("结束查询关注用户直播间信息"))
 
-            await self._send_bark_notification(
-                _("[DouYin] 关注用户直播采集"),
-                _(
-                    "房间ID：{0}\n" "直播间：{1}\n" "观看人数：{2}\n" "下载时间：{3}"
-                ).format(
-                    follow_live.room_id,
-                    (
-                        follow_live.live_title_raw[:20] + "..."
-                        if len(follow_live.live_title_raw) > 20
-                        else follow_live.live_title_raw
-                    ),
-                    follow_live.user_count or 0,
-                    timestamp_2_str(get_timestamp("sec")),
-                ),
-                group="DouYin",
-            )
         else:
             logger.warning(
                 _("获取关注用户直播间信息失败：{0}").format(follow_live.status_msg)
@@ -2243,15 +2022,6 @@ class DouyinHandler:
 
         logger.info(_("结束处理作品评论，共处理 {0} 条评论").format(comments_collected))
 
-        await self._send_bark_notification(
-            _("[DouYin] 作品评论下载"),
-            _("评论数：{0}\n" "下载时间：{1}").format(
-                comments_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
-
     async def fetch_post_comment_reply(
         self,
         aweme_id: str,
@@ -2322,15 +2092,6 @@ class DouyinHandler:
             await asyncio.sleep(self.kwargs.get("timeout", 5))
 
         logger.info(_("结束处理评论回复，共处理 {0} 条回复").format(reply_collected))
-
-        await self._send_bark_notification(
-            _("[DouYin] 评论回复下载"),
-            _("回复数：{0}\n" "下载时间：{1}").format(
-                reply_collected,
-                timestamp_2_str(get_timestamp("sec")),
-            ),
-            group="DouYin",
-        )
 
     async def fetch_home_post_search(
         self,
@@ -2406,16 +2167,6 @@ class DouyinHandler:
 
         logger.info(
             _("结束处理主页搜索作品，共处理 {0} 个作品").format(posts_collected)
-        )
-
-        await self._send_bark_notification(
-            _("[DouYin] 主页搜索作品下载"),
-            _("作品数：{0}\n" "下载时间：{1}\n {2}").format(
-                posts_collected,
-                timestamp_2_str(get_timestamp("sec")),
-                search.home_text,
-            ),
-            group="DouYin",
         )
 
     async def fetch_suggest_word(

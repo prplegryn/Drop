@@ -916,8 +916,7 @@ class AESEncryptionUtils:
         if nonce is None:
             nonce = self.iv or secrets.token_bytes(12)
         # 为了安全，GCM每次加密都应该生成一个新的随机 12位 nonce
-        # 但 Bark 应用不支持随机 nonce 的解密
-        # 所以其他开发者在GCM模式的下不需要传入 iv 参数，就会使用随机 nonce
+        # 未显式传入 iv 时默认使用随机 nonce
         cipher = Cipher(
             algorithms.AES(self.key), modes.GCM(nonce), backend=default_backend()
         )

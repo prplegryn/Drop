@@ -1,14 +1,121 @@
 # path: f2/log/logger.py
 
 import time
+import re
 import logging
 import datetime
 
 from pathlib import Path
-from rich.logging import RichHandler
 from logging.handlers import TimedRotatingFileHandler
 
+from f2.cli.cli_console import RichConsoleManager
 from f2.utils._singleton import Singleton
+
+
+RICH_MARKUP_RE = re.compile(r"\[/?[^\]]+\]")
+COOKIE_RE = re.compile(r"(?i)(cookie['\"]?\s*[:=]\s*['\"]?)([^,'\"}\s]+)")
+
+
+def _strip_markup(message: str) -> str:
+    return RICH_MARKUP_RE.sub("", message)
+
+
+def _redact_cookie(message: str) -> str:
+    return COOKIE_RE.sub(r"\1<COOKIE>", message)
+
+
+def _title_from_file(file_name: str) -> str:
+    title = re.sub(r"\.[^.]+$", "", file_name)
+    title = re.sub(r"_(video|music|cover|desc)$", "", title)
+    title = re.sub(r"_(image|live)_\d+$", "", title)
+    return title or file_name
+
+
+class DashboardHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.console_manager = RichConsoleManager()
+        self._engine_printed = False
+        self._stream_status_printed = False
+        self._result_files = set()
+
+    def emit(self, record):
+        try:
+            message = _redact_cookie(record.getMessage())
+            plain = _strip_markup(message).strip()
+
+            if not self._engine_printed:
+                self.console_manager.rich_console.print(
+                    self.console_manager.header("F2 DOWNLOAD ENGINE")
+                )
+                self._engine_printed = True
+
+            for renderable in self._render_record(record, plain):
+                self.console_manager.rich_console.print(renderable)
+        except Exception:
+            self.handleError(record)
+
+    def _render_record(self, record, message: str):
+        if not message:
+            return []
+
+        if message.startswith("应用："):
+            platform = message.split("：", 1)[1].strip()
+            return [self.console_manager.line("PLATFORM", platform.title())]
+
+        if message.startswith("模式："):
+            return [
+                self.console_manager.line("MODE", message.split("：", 1)[1].strip())
+            ]
+
+        target_match = re.search(r"处理作品[:：]\s*([0-9]+)\s*数据", message)
+        if target_match:
+            lines = [
+                self.console_manager.line("TARGET", target_match.group(1)),
+                self.console_manager.line("STATE", "运行中", cursor=True),
+            ]
+            if not self._stream_status_printed:
+                lines.extend(
+                    [
+                        self.console_manager.header("STREAM STATUS"),
+                        self.console_manager.line("Metadata", "已获取"),
+                        self.console_manager.line("Media stream", "已解析"),
+                        self.console_manager.line("Download slot", "已分配"),
+                    ]
+                )
+                self._stream_status_printed = True
+            return lines
+
+        done_match = re.match(r"^(DONE|SKIP)\s+(.+)$", message)
+        if done_match:
+            file_name = done_match.group(2).strip()
+            if file_name in self._result_files:
+                return []
+
+            self._result_files.add(file_name)
+            return [
+                self.console_manager.header("RESULT"),
+                self.console_manager.line("TITLE", _title_from_file(file_name)),
+                self.console_manager.line("FILE", file_name),
+                self.console_manager.line("ELAPSED", "00:00.0"),
+            ]
+
+        if message.startswith("INIT ") and " -> " in message:
+            file_name = message.rsplit(" -> ", 1)[1].strip()
+            return [
+                self.console_manager.line("Download slot", "已分配"),
+                self.console_manager.line("FILE", file_name),
+            ]
+
+        level_label = "LOG"
+        if record.levelno >= logging.ERROR:
+            level_label = "ERROR"
+        elif record.levelno >= logging.WARNING:
+            level_label = "WARNING"
+        elif record.levelno <= logging.DEBUG:
+            level_label = "DEBUG"
+
+        return [self.console_manager.line(level_label, message)]
 
 
 class LogManager(metaclass=Singleton):
@@ -75,15 +182,7 @@ class LogManager(metaclass=Singleton):
         self.logger.setLevel(level)
 
         if log_to_console:
-            ch = RichHandler(
-                show_time=False,
-                show_level=True,
-                show_path=False,
-                markup=True,
-                keywords=(RichHandler.KEYWORDS or []) + ["STREAM"],
-                rich_tracebacks=True,
-            )
-            ch.setFormatter(logging.Formatter("{message}", style="{", datefmt="[%X]"))
+            ch = DashboardHandler()
             self.logger.addHandler(ch)
 
         # 文件日志输出
