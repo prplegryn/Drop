@@ -38,6 +38,23 @@ jobs:
         with:
           gradle-version: "9.4.1"
 
+      - name: Verify Gradle properties
+        run: |
+          for file in gradle.properties "$HOME/.gradle/gradle.properties"; do
+            if [ -f "$file" ]; then
+              sed -i '/^android\.defaults\.buildfeatures\.buildconfig=/d' "$file"
+            fi
+          done
+
+          if grep -R "android.defaults.buildfeatures.buildconfig" -n \
+            --include='*.properties' \
+            --include='*.gradle' \
+            --include='*.gradle.kts' \
+            .; then
+            echo "Removed AGP option is still present."
+            exit 1
+          fi
+
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --stacktrace
 
